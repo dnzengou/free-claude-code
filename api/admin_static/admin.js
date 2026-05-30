@@ -1,12 +1,15 @@
-const state = {
-  config: null,
-  fields: new Map(),
-  localStatus: new Map(),
-  modelOptions: [],
-  activeView: "providers",
-};
+/* ================================================================
+   FREE CLAUDE CODE — ADMIN UI JS  ·  Production Build
+   ================================================================ */
 
-const MASKED_SECRET = "********";
+"use strict";
+
+// ── Constants ─────────────────────────────────────────────────
+const MASKED_SECRET     = "********";
+const AUTO_REFRESH_MS   = 30_000;
+const TOAST_DURATION_MS = 4_200;
+const TOAST_ANIM_MS     = 320;
+
 const VIEW_GROUPS = [
   {
     id: "providers",
@@ -31,121 +34,152 @@ const VIEW_GROUPS = [
   },
 ];
 
+// ── App State ─────────────────────────────────────────────────
+const state = {
+  config:            null,
+  fields:            new Map(),
+  localStatus:       new Map(),
+  modelOptions:      [],
+  activeView:        "providers",
+  autoRefreshTimer:  null,
+};
+
+// ── DOM Helpers ───────────────────────────────────────────────
 const byId = (id) => document.getElementById(id);
 
-function sourceLabel(source) {
-  const labels = {
-    default: "default",
-    template: "template",
-    repo_env: "repo .env",
-    managed_env: "",
-    explicit_env_file: "FCC_ENV_FILE",
-    process: "process env",
-  };
-  return Object.prototype.hasOwnProperty.call(labels, source) ? labels[source] : source;
-}
+// ================================================================
+//  TOAST SYSTEM
+// ================================================================
+const Toast = (() => {
+  function show(message, kind = "info") {
+    const container = byId("toastContainer");
+    if (!container) return;
 
-function sourceText(field) {
-  const parts = [];
-  const label = sourceLabel(field.source);
-  if (label) {
-    parts.push(label);
+    const toast = document.createElement("div");
+    toast.className = `toast ${kind}`;
+    toast.setAttribute("role", "alert");
+
+    const dot = document.createElement("span");
+    dot.className = "toast-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const text = document.createElement("span");
+    text.textContent = message;
+
+    toast.append(dot, text);
+    container.appendChild(toast);
+
+    let dismissed = false;
+
+    const dismiss = () => {
+      if (dismissed) return;
+      dismissed = true;
+      toast.classList.add("dismissing");
+      setTimeout(() => toast.remove(), TOAST_ANIM_MS);
+    };
+
+    const timer = setTimeout(dismiss, TOAST_DURATION_MS);
+
+    toast.addEventListener("click", () => {
+      clearTimeout(timer);
+      dismiss();
+    });
   }
-  if (field.locked) {
-    parts.push("locked");
-  }
-  return parts.join(" ");
-}
 
-function providerName(providerId) {
-  const names = {
-    nvidia_nim: "NVIDIA NIM",
-    open_router: "OpenRouter",
-    mistral_codestral: "Mistral Codestral",
-    deepseek: "DeepSeek",
-    lmstudio: "LM Studio",
-    llamacpp: "llama.cpp",
-    ollama: "Ollama",
-    kimi: "Kimi",
-    wafer: "Wafer",
-    opencode: "OpenCode Zen",
-    opencode_go: "OpenCode Go",
-    zai: "Z.ai",
-  };
-  if (names[providerId]) return names[providerId];
-  return providerId
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
+  return { show };
+})();
 
-function statusClass(status) {
-  if (["configured", "reachable", "running"].includes(status)) return "ok";
-  if (["missing_key", "missing_url", "unknown"].includes(status)) return "warn";
-  if (["offline", "error"].includes(status)) return "error";
-  return "neutral";
-}
-
+// ================================================================
+//  API LAYER
+// ================================================================
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    let msg = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body?.detail) msg = String(body.detail);
+    } catch { /* ignore */ }
+    throw new Error(msg);
   }
   return response.json();
 }
 
+// ================================================================
+//  BOOTSTRAP / LOAD
+// ================================================================
 async function load() {
-  showMessage("Loading admin config");
-  const config = await api("/admin/api/config");
-  state.config = config;
-  state.fields = new Map(config.fields.map((field) => [field.key, field]));
-  renderNav();
-  renderProviders(config.provider_status);
-  renderSections(config.sections, config.fields);
-  byId("configPath").textContent = config.paths.managed;
-  await validate(false);
-  await refreshLocalStatus();
-  updateDirtyState();
-  showMessage("");
+  renderSkeletons();
+  showMessage("Loading…");
+
+  try {
+    const config = await api("/admin/api/config");
+    state.config = config;
+    state.fields = new Map(config.fields.map((f) => [f.key, f]));
+
+    renderNav();
+    renderProviders(config.provider_status);
+    renderSections(config.sections, config.fields);
+    byId("configPath").textContent = config.paths.managed;
+
+    await validate(/* showResult */ false);
+    await refreshLocalStatus();
+    updateDirtyState();
+    showMessage("");
+    startAutoRefresh();
+  } catch (err) {
+    showMessage(err.message, "error");
+    Toast.show(`Failed to load config: ${err.message}`, "error");
+  }
 }
 
+// ── Skeletons shown while loading ─────────────────────────────
+function renderSkeletons() {
+  const grid = byId("providerGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  for (let i = 0; i < 8; i++) {
+    const sk = document.createElement("div");
+    sk.className = "skeleton skeleton-card";
+    grid.appendChild(sk);
+  }
+}
+
+// ================================================================
+//  NAVIGATION
+// ================================================================
 function renderNav() {
   const nav = byId("sectionNav");
   nav.innerHTML = "";
   VIEW_GROUPS.forEach((view, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `nav-link${index === 0 ? " active" : ""}`;
-    button.dataset.view = view.id;
-    button.textContent = view.label;
-    if (index === 0) {
-      button.setAttribute("aria-current", "page");
-    }
-    button.addEventListener("click", () => {
-      setActiveView(view.id, { scroll: true });
-    });
-    nav.appendChild(button);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `nav-link${index === 0 ? " active" : ""}`;
+    btn.dataset.view = view.id;
+    btn.textContent = view.label;
+    if (index === 0) btn.setAttribute("aria-current", "page");
+    btn.addEventListener("click", () => setActiveView(view.id, { scroll: true }));
+    nav.appendChild(btn);
   });
   setActiveView(state.activeView, { scroll: false });
 }
 
 function setActiveView(viewId, { scroll = false } = {}) {
   const activeView =
-    VIEW_GROUPS.find((view) => view.id === viewId) || VIEW_GROUPS[0];
+    VIEW_GROUPS.find((v) => v.id === viewId) || VIEW_GROUPS[0];
   state.activeView = activeView.id;
+
   byId("pageTitle").textContent = activeView.title;
 
   document.querySelectorAll(".nav-link").forEach((link) => {
     const selected = link.dataset.view === activeView.id;
     link.classList.toggle("active", selected);
-    if (selected) {
-      link.setAttribute("aria-current", "page");
-    } else {
-      link.removeAttribute("aria-current");
-    }
+    selected
+      ? link.setAttribute("aria-current", "page")
+      : link.removeAttribute("aria-current");
   });
 
   document.querySelectorAll(".admin-view").forEach((view) => {
@@ -154,9 +188,45 @@ function setActiveView(viewId, { scroll = false } = {}) {
     view.hidden = !selected;
   });
 
-  if (scroll) {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+  if (scroll) window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ================================================================
+//  PROVIDERS
+// ================================================================
+const PROVIDER_NAMES = {
+  nvidia_nim:        "NVIDIA NIM",
+  open_router:       "OpenRouter",
+  mistral_codestral: "Mistral Codestral",
+  mistral:           "Mistral",
+  deepseek:          "DeepSeek",
+  lmstudio:          "LM Studio",
+  llamacpp:          "llama.cpp",
+  ollama:            "Ollama",
+  kimi:              "Kimi",
+  wafer:             "Wafer",
+  opencode:          "OpenCode Zen",
+  opencode_go:       "OpenCode Go",
+  zai:               "Z.ai",
+  gemini:            "Google Gemini",
+  groq:              "Groq",
+  cerebras:          "Cerebras",
+  fireworks:         "Fireworks AI",
+};
+
+function providerName(id) {
+  if (PROVIDER_NAMES[id]) return PROVIDER_NAMES[id];
+  return id
+    .split("_")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
+
+function statusClass(status) {
+  if (["configured", "reachable", "running"].includes(status)) return "ok";
+  if (["missing_key", "missing_url", "unknown"].includes(status))  return "warn";
+  if (["offline", "error"].includes(status))                       return "error";
+  return "";
 }
 
 function renderProviders(providerStatus) {
@@ -169,12 +239,15 @@ function renderProviders(providerStatus) {
 
     const title = document.createElement("div");
     title.className = "provider-title";
-    title.innerHTML = `<strong>${providerName(provider.provider_id)}</strong>`;
+
+    const name = document.createElement("strong");
+    name.textContent = providerName(provider.provider_id);
 
     const pill = document.createElement("span");
     pill.className = `status-pill ${statusClass(provider.status)}`;
     pill.textContent = provider.label;
-    title.appendChild(pill);
+
+    title.append(name, pill);
 
     const meta = document.createElement("div");
     meta.className = "provider-meta";
@@ -183,13 +256,16 @@ function renderProviders(providerStatus) {
         ? provider.base_url || "No local URL configured"
         : provider.credential_env;
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "test-button";
-    button.textContent = provider.kind === "local" ? "Test" : "Refresh models";
-    button.addEventListener("click", () => testProvider(provider.provider_id, button));
+    const testBtn = document.createElement("button");
+    testBtn.type = "button";
+    testBtn.className = "test-button";
+    testBtn.textContent =
+      provider.kind === "local" ? "Test" : "Refresh models";
+    testBtn.addEventListener("click", () =>
+      testProvider(provider.provider_id, testBtn)
+    );
 
-    card.append(title, meta, button);
+    card.append(title, meta, testBtn);
     grid.appendChild(card);
   });
 }
@@ -200,28 +276,29 @@ function updateProviderCard(providerId, status, label, metaText) {
   const pill = card.querySelector(".status-pill");
   pill.className = `status-pill ${statusClass(status)}`;
   pill.textContent = label;
-  if (metaText) {
-    card.querySelector(".provider-meta").textContent = metaText;
-  }
+  if (metaText) card.querySelector(".provider-meta").textContent = metaText;
 }
 
+// ================================================================
+//  SECTIONS & FIELDS
+// ================================================================
 function renderSections(sections, fields) {
   VIEW_GROUPS.forEach((view) => {
     byId(view.containerId).innerHTML = "";
   });
 
-  const sectionById = new Map(sections.map((section) => [section.id, section]));
-  const bySection = new Map();
-  sections.forEach((section) => bySection.set(section.id, []));
-  fields.forEach((field) => {
-    if (!bySection.has(field.section)) bySection.set(field.section, []);
-    bySection.get(field.section).push(field);
+  const sectionById = new Map(sections.map((s) => [s.id, s]));
+  const bySection   = new Map();
+  sections.forEach((s) => bySection.set(s.id, []));
+  fields.forEach((f) => {
+    if (!bySection.has(f.section)) bySection.set(f.section, []);
+    bySection.get(f.section).push(f);
   });
 
   VIEW_GROUPS.forEach((view) => {
     const container = byId(view.containerId);
     view.sections.forEach((sectionId) => {
-      const section = sectionById.get(sectionId);
+      const section       = sectionById.get(sectionId);
       const sectionFields = bySection.get(sectionId) || [];
       if (!section || sectionFields.length === 0) return;
 
@@ -231,17 +308,22 @@ function renderSections(sections, fields) {
 
       const heading = document.createElement("div");
       heading.className = "section-heading";
-      heading.innerHTML = `<div><h3>${section.label}</h3><p>${section.description}</p></div>`;
+
+      const headingInner = document.createElement("div");
+      const h3 = document.createElement("h3");
+      h3.textContent = section.label;
+      const p = document.createElement("p");
+      p.textContent = section.description;
+      headingInner.append(h3, p);
+      heading.appendChild(headingInner);
       sectionEl.appendChild(heading);
 
       const grid = document.createElement("div");
       grid.className = "field-grid";
-      sectionFields.forEach((field) => {
-        grid.appendChild(renderField(field));
-      });
+      sectionFields.forEach((field) => grid.appendChild(renderField(field)));
       sectionEl.appendChild(grid);
 
-      if (sectionFields.some((field) => field.advanced)) {
+      if (sectionFields.some((f) => f.advanced)) {
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "ghost-button advanced-toggle";
@@ -263,8 +345,10 @@ function renderField(field) {
   wrapper.className = `field${field.advanced ? " advanced-field" : ""}`;
   wrapper.dataset.key = field.key;
 
+  // Label
   const label = document.createElement("label");
   label.htmlFor = `field-${field.key}`;
+
   const labelText = document.createElement("span");
   labelText.textContent = field.label;
   label.appendChild(labelText);
@@ -277,30 +361,83 @@ function renderField(field) {
     label.appendChild(sourceEl);
   }
 
+  // Input
   const input = inputForField(field);
-  input.id = `field-${field.key}`;
-  input.dataset.key = field.key;
+  input.id             = `field-${field.key}`;
+  input.dataset.key    = field.key;
   input.dataset.original = field.value || "";
-  input.dataset.secret = field.secret ? "true" : "false";
+  input.dataset.secret    = field.secret    ? "true" : "false";
   input.dataset.configured = field.configured ? "true" : "false";
-  input.disabled = field.locked;
-  input.addEventListener("input", updateDirtyState);
+  input.disabled       = field.locked;
+  input.addEventListener("input",  updateDirtyState);
   input.addEventListener("change", updateDirtyState);
 
-  wrapper.append(label, input);
-  if (field.description) {
-    const description = document.createElement("div");
-    description.className = "field-description";
-    description.textContent = field.description;
-    wrapper.appendChild(description);
+  wrapper.appendChild(label);
+
+  // Wrap plain text fields with copy button
+  const isCopyable =
+    !field.secret &&
+    !field.locked &&
+    field.type !== "boolean" &&
+    field.type !== "tri_boolean" &&
+    field.type !== "select" &&
+    field.type !== "textarea";
+
+  if (isCopyable) {
+    const wrap = document.createElement("div");
+    wrap.className = "field-input-wrap";
+    wrap.appendChild(input);
+    wrap.appendChild(makeCopyButton(input));
+    wrapper.appendChild(wrap);
+  } else {
+    wrapper.appendChild(input);
   }
+
+  if (field.description) {
+    const desc = document.createElement("div");
+    desc.className = "field-description";
+    desc.textContent = field.description;
+    wrapper.appendChild(desc);
+  }
+
   return wrapper;
+}
+
+// SVG icons as strings
+const ICON_COPY = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+function makeCopyButton(input) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "copy-btn";
+  btn.setAttribute("aria-label", "Copy value");
+  btn.innerHTML = ICON_COPY;
+
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const val = input.value.trim();
+    if (!val) return;
+    try {
+      await navigator.clipboard.writeText(val);
+      btn.classList.add("copied");
+      btn.innerHTML = ICON_CHECK;
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.innerHTML = ICON_COPY;
+      }, 1_500);
+    } catch {
+      Toast.show("Copy failed — requires a secure context (HTTPS/localhost)", "warn");
+    }
+  });
+
+  return btn;
 }
 
 function inputForField(field) {
   if (field.type === "boolean") {
     const input = document.createElement("input");
-    input.type = "checkbox";
+    input.type    = "checkbox";
     input.checked = String(field.value).toLowerCase() === "true";
     input.dataset.original = input.checked ? "true" : "false";
     return input;
@@ -308,18 +445,16 @@ function inputForField(field) {
 
   if (field.type === "tri_boolean") {
     const select = document.createElement("select");
-    [
-      ["", "Inherit"],
-      ["true", "Enabled"],
-      ["false", "Disabled"],
-    ].forEach(([value, label]) => select.appendChild(option(value, label)));
+    for (const [val, lbl] of [["", "Inherit"], ["true", "Enabled"], ["false", "Disabled"]]) {
+      select.appendChild(option(val, lbl));
+    }
     select.value = field.value || "";
     return select;
   }
 
   if (field.type === "select") {
     const select = document.createElement("select");
-    field.options.forEach((value) => select.appendChild(option(value, value)));
+    for (const v of field.options) select.appendChild(option(v, v));
     select.value = field.value || field.options[0] || "";
     return select;
   }
@@ -332,29 +467,53 @@ function inputForField(field) {
 
   const input = document.createElement("input");
   input.type = field.type === "number" ? "number" : "text";
+
   if (field.type === "secret") {
-    input.type = "password";
+    input.type        = "password";
     input.placeholder = field.configured
-      ? "Configured - enter a new value to replace"
+      ? "Configured — enter a new value to replace"
       : "Not configured";
-    input.value = "";
+    input.value       = "";
     input.autocomplete = "off";
   } else {
     input.value = field.value || "";
   }
-  if (field.key.startsWith("MODEL")) {
-    input.setAttribute("list", "model-options");
-  }
+
+  if (field.key.startsWith("MODEL")) input.setAttribute("list", "model-options");
   return input;
 }
 
 function option(value, label) {
-  const optionEl = document.createElement("option");
-  optionEl.value = value;
-  optionEl.textContent = label;
-  return optionEl;
+  const opt = document.createElement("option");
+  opt.value      = value;
+  opt.textContent = label;
+  return opt;
 }
 
+// ── Field source labels ────────────────────────────────────────
+function sourceLabel(source) {
+  const labels = {
+    default: "default",
+    template: "template",
+    repo_env: "repo .env",
+    managed_env: "",
+    explicit_env_file: "FCC_ENV_FILE",
+    process: "process env",
+  };
+  return Object.prototype.hasOwnProperty.call(labels, source) ? labels[source] : source;
+}
+
+function sourceText(field) {
+  const parts = [];
+  const lbl = sourceLabel(field.source);
+  if (lbl) parts.push(lbl);
+  if (field.locked) parts.push("locked");
+  return parts.join(" ");
+}
+
+// ================================================================
+//  DIRTY STATE
+// ================================================================
 function readFieldValue(input) {
   if (input.type === "checkbox") return input.checked ? "true" : "false";
   if (input.dataset.secret === "true" && input.dataset.configured === "true") {
@@ -365,113 +524,161 @@ function readFieldValue(input) {
 
 function changedValues() {
   const values = {};
-  document.querySelectorAll("[data-key]").forEach((input) => {
-    if (input.disabled || !input.matches("input, select, textarea")) return;
-    const value = readFieldValue(input);
-    if (value !== input.dataset.original) {
-      values[input.dataset.key] = value;
-    }
+  document.querySelectorAll("[data-key]").forEach((el) => {
+    if (el.disabled || !el.matches("input, select, textarea")) return;
+    const val = readFieldValue(el);
+    if (val !== el.dataset.original) values[el.dataset.key] = val;
   });
   return values;
 }
 
 function updateDirtyState() {
   const count = Object.keys(changedValues()).length;
-  byId("dirtyState").textContent =
-    count === 0 ? "No changes" : `${count} unsaved change${count === 1 ? "" : "s"}`;
+  const label = byId("dirtyState");
+
+  if (count === 0) {
+    label.textContent = "No changes";
+    label.classList.remove("has-changes");
+  } else {
+    label.textContent = `${count} unsaved change${count === 1 ? "" : "s"}`;
+    label.classList.add("has-changes");
+  }
+
   byId("applyButton").disabled = count === 0;
 }
 
+// ================================================================
+//  VALIDATE / APPLY
+// ================================================================
 async function validate(showResult = true) {
-  const result = await api("/admin/api/config/validate", {
-    method: "POST",
-    body: JSON.stringify({ values: changedValues() }),
-  });
-  if (showResult) {
-    showValidationResult(result);
+  try {
+    const result = await api("/admin/api/config/validate", {
+      method: "POST",
+      body: JSON.stringify({ values: changedValues() }),
+    });
+    if (showResult) showValidationResult(result);
+    return result;
+  } catch (err) {
+    showMessage(err.message, "error");
+    if (showResult) Toast.show(err.message, "error");
   }
-  return result;
 }
 
 function showValidationResult(result) {
   if (result.valid) {
-    showMessage("Config shape is valid", "ok");
+    showMessage("Config shape is valid ✓", "ok");
   } else {
-    showMessage(result.errors.join("; "), "error");
+    const msg = result.errors.join("; ");
+    showMessage(msg, "error");
+    Toast.show(result.errors[0], "error");
   }
 }
 
 async function apply() {
-  const result = await api("/admin/api/config/apply", {
-    method: "POST",
-    body: JSON.stringify({ values: changedValues() }),
-  });
-  if (!result.applied) {
-    showValidationResult(result);
-    return;
-  }
-  const restart = result.restart || {};
-  if (restart.required && restart.automatic) {
-    showMessage("Applied. Restarting server...", "ok");
-    byId("applyButton").disabled = true;
-    setTimeout(() => {
-      window.location.href = restart.admin_url || "/admin";
-    }, 1600);
-    return;
-  }
-  const pending = restart.required ? restart.fields || [] : result.pending_fields || [];
-  await load();
-  showMessage(
-    pending.length
+  const applyBtn = byId("applyButton");
+  const prevText = applyBtn.textContent;
+  applyBtn.disabled    = true;
+  applyBtn.textContent = "Applying…";
+
+  try {
+    const result = await api("/admin/api/config/apply", {
+      method: "POST",
+      body: JSON.stringify({ values: changedValues() }),
+    });
+
+    if (!result.applied) {
+      showValidationResult(result);
+      return;
+    }
+
+    const restart = result.restart || {};
+    if (restart.required && restart.automatic) {
+      showMessage("Applied — restarting server…", "ok");
+      Toast.show("Config applied — server is restarting", "ok");
+      setTimeout(() => {
+        window.location.href = restart.admin_url || "/admin";
+      }, 1_800);
+      return;
+    }
+
+    const pending = restart.required
+      ? restart.fields || []
+      : result.pending_fields || [];
+
+    await load();
+
+    const msg = pending.length
       ? `Applied. Restart fcc-server to use: ${pending.join(", ")}`
-      : "Applied",
-    "ok",
-  );
+      : "Config applied successfully";
+    showMessage(msg, "ok");
+    Toast.show(msg, "ok");
+  } catch (err) {
+    showMessage(err.message, "error");
+    Toast.show(`Apply failed: ${err.message}`, "error");
+  } finally {
+    applyBtn.disabled    = false;
+    applyBtn.textContent = prevText;
+  }
 }
 
+// ================================================================
+//  PROVIDER STATUS
+// ================================================================
 async function refreshLocalStatus() {
-  const result = await api("/admin/api/providers/local-status");
-  result.providers.forEach((provider) => {
-    state.localStatus.set(provider.provider_id, provider);
-    const meta = provider.status_code
-      ? `${provider.base_url} returned HTTP ${provider.status_code}`
-      : provider.base_url;
-    updateProviderCard(provider.provider_id, provider.status, provider.label, meta);
-  });
+  try {
+    const result = await api("/admin/api/providers/local-status");
+    result.providers.forEach((p) => {
+      state.localStatus.set(p.provider_id, p);
+      const meta = p.status_code
+        ? `${p.base_url} — HTTP ${p.status_code}`
+        : p.base_url;
+      updateProviderCard(p.provider_id, p.status, p.label, meta);
+    });
+  } catch { /* non-critical — silent fail */ }
 }
 
 async function testProvider(providerId, button) {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = "Testing";
+  const original    = button.textContent;
+  button.disabled   = true;
+  button.textContent = "Testing…";
+
   try {
     const result = await api(`/admin/api/providers/${providerId}/test`, {
       method: "POST",
       body: "{}",
     });
+
     if (result.ok) {
+      const n = result.models.length;
       updateProviderCard(
         providerId,
         "reachable",
-        `${result.models.length} models`,
+        `${n} model${n !== 1 ? "s" : ""}`,
         result.models.slice(0, 3).join(", ") || "No models returned",
       );
       state.modelOptions = Array.from(
         new Set([
           ...state.modelOptions,
-          ...result.models.map((model) => `${providerId}/${model}`),
-        ]),
+          ...result.models.map((m) => `${providerId}/${m}`),
+        ])
       ).sort();
       syncModelDatalist();
+      Toast.show(`${providerName(providerId)}: ${n} model${n !== 1 ? "s" : ""} found`, "ok");
     } else {
       updateProviderCard(providerId, "offline", result.error_type, result.error_type);
+      Toast.show(`${providerName(providerId)}: ${result.error_type}`, "error");
     }
+  } catch (err) {
+    Toast.show(`${providerName(providerId)}: ${err.message}`, "error");
   } finally {
-    button.disabled = false;
+    button.disabled    = false;
     button.textContent = original;
   }
 }
 
+// ================================================================
+//  MODEL DATALIST
+// ================================================================
 function syncModelDatalist() {
   let datalist = byId("model-options");
   if (!datalist) {
@@ -480,18 +687,132 @@ function syncModelDatalist() {
     document.body.appendChild(datalist);
   }
   datalist.innerHTML = "";
-  state.modelOptions.forEach((model) => datalist.appendChild(option(model, model)));
+  state.modelOptions.forEach((m) => datalist.appendChild(option(m, m)));
 }
 
+// ================================================================
+//  STATUS BAR
+// ================================================================
 function showMessage(message, kind = "") {
   const area = byId("messageArea");
   area.textContent = message;
-  area.className = `message-area ${kind}`.trim();
+  area.className   = `message-area ${kind}`.trim();
 }
 
+// ================================================================
+//  AUTO-REFRESH
+// ================================================================
+function startAutoRefresh() {
+  stopAutoRefresh();
+  const dot = byId("autoRefreshIndicator");
+  if (dot) dot.classList.add("active");
+
+  state.autoRefreshTimer = setInterval(() => {
+    refreshLocalStatus();
+  }, AUTO_REFRESH_MS);
+}
+
+function stopAutoRefresh() {
+  if (state.autoRefreshTimer !== null) {
+    clearInterval(state.autoRefreshTimer);
+    state.autoRefreshTimer = null;
+  }
+  const dot = byId("autoRefreshIndicator");
+  if (dot) dot.classList.remove("active");
+}
+
+// ================================================================
+//  KEYBOARD SHORTCUTS
+// ================================================================
+document.addEventListener("keydown", (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod) return;
+
+  if (e.key === "s") {
+    e.preventDefault();
+    validate(true);
+  }
+
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const applyBtn = byId("applyButton");
+    if (!applyBtn.disabled) apply();
+  }
+});
+
+// ================================================================
+//  UNSAVED CHANGES GUARD
+// ================================================================
+window.addEventListener("beforeunload", (e) => {
+  if (Object.keys(changedValues()).length > 0) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
+// ================================================================
+//  REFRESH BUTTON
+// ================================================================
+const refreshBtn = byId("refreshProvidersBtn");
+if (refreshBtn) {
+  refreshBtn.addEventListener("click", async () => {
+    refreshBtn.classList.add("spinning");
+    try {
+      await refreshLocalStatus();
+    } finally {
+      refreshBtn.classList.remove("spinning");
+    }
+  });
+}
+
+// ================================================================
+//  EVENT LISTENERS
+// ================================================================
 byId("validateButton").addEventListener("click", () => validate(true));
 byId("applyButton").addEventListener("click", apply);
 
-load().catch((error) => {
-  showMessage(error.message, "error");
+// ================================================================
+//  SEARCH / FILTER
+// ================================================================
+function filterFields(query) {
+  const needle = query.trim().toLowerCase();
+
+  document.querySelectorAll(".settings-section").forEach((section) => {
+    let visible = 0;
+    section.querySelectorAll(".field").forEach((field) => {
+      // Match against the env-var key and the human label text
+      const key   = (field.dataset.key  || "").toLowerCase();
+      const label = (field.querySelector("label span")?.textContent || "").toLowerCase();
+      const match = !needle || key.includes(needle) || label.includes(needle);
+      field.classList.toggle("search-hidden", !match);
+      if (match) visible++;
+    });
+    // Hide the whole section card when nothing matches (preserves layout)
+    section.classList.toggle("search-empty", visible === 0);
+  });
+}
+
+function initSearch() {
+  const input = byId("searchInput");
+  if (!input) return;
+
+  input.addEventListener("input", () => filterFields(input.value));
+
+  // Clear filter when user switches views
+  document.querySelectorAll(".nav-link").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      input.value = "";
+      filterFields("");
+    });
+  });
+}
+
+// ================================================================
+//  BOOT
+// ================================================================
+load().catch((err) => {
+  showMessage(err.message, "error");
+  Toast.show(`Failed to load: ${err.message}`, "error");
 });
+
+initSearch();

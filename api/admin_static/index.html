@@ -3,35 +3,96 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Free Claude Code Admin</title>
-    <link rel="icon" href="data:," />
+    <meta name="theme-color" content="#11100e" />
+    <title>Free Claude Code — Admin</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232fb984'/><text y='.88em' font-size='56' x='50%' text-anchor='middle' fill='white' font-weight='800' font-family='system-ui,sans-serif'>FC</text></svg>"
+    />
     <link rel="stylesheet" href="/admin/assets/admin.css" />
   </head>
   <body>
+    <!-- Toast notifications (aria-live region) -->
+    <div
+      id="toastContainer"
+      class="toast-container"
+      role="region"
+      aria-label="Notifications"
+      aria-live="polite"
+      aria-atomic="false"
+    ></div>
+
     <div class="app-shell">
+      <!-- ── Sidebar ────────────────────────────────────────── -->
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">FC</div>
+          <div class="brand-mark" aria-hidden="true">FC</div>
           <div>
             <h1>Free Claude Code</h1>
             <p>Server Control</p>
           </div>
         </div>
+
         <nav id="sectionNav" class="section-nav" aria-label="Admin views"></nav>
+
+        <div class="sidebar-footer">
+          <div class="kbd-hints" aria-label="Keyboard shortcuts">
+            <span><kbd>Ctrl</kbd><kbd>S</kbd> Validate</span>
+            <span><kbd>Ctrl</kbd><kbd>↵</kbd> Apply</span>
+          </div>
+        </div>
       </aside>
 
-      <main class="main">
+      <!-- ── Main ──────────────────────────────────────────── -->
+      <main class="main" id="mainContent">
         <header class="topbar">
-          <div>
-            <h2 id="pageTitle">Providers</h2>
+          <h2 id="pageTitle">Providers</h2>
+          <div class="topbar-actions">
+            <input
+              id="searchInput"
+              type="search"
+              class="search-input"
+              placeholder="Filter settings…"
+              aria-label="Filter settings fields"
+              autocomplete="off"
+            />
+            <span
+              id="autoRefreshIndicator"
+              class="refresh-dot"
+              title="Provider status auto-refreshes every 30 s"
+              aria-hidden="true"
+            ></span>
           </div>
         </header>
 
         <div id="adminViews" class="admin-views">
+          <!-- Providers view -->
           <section id="view-providers" class="admin-view active" data-view="providers">
             <section class="provider-strip" aria-label="Provider status">
               <div class="strip-header">
                 <h3>Providers</h3>
+                <button
+                  id="refreshProvidersBtn"
+                  type="button"
+                  class="icon-button"
+                  title="Refresh local provider status"
+                  aria-label="Refresh local provider status"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M23 4v6h-6" />
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                  </svg>
+                </button>
               </div>
               <div id="providerGrid" class="provider-grid"></div>
             </section>
@@ -42,6 +103,7 @@
             ></div>
           </section>
 
+          <!-- Model Config view -->
           <section id="view-model_config" class="admin-view" data-view="model_config" hidden>
             <div
               id="modelConfigSections"
@@ -50,6 +112,7 @@
             ></div>
           </section>
 
+          <!-- Messaging view -->
           <section id="view-messaging" class="admin-view" data-view="messaging" hidden>
             <div
               id="messagingSections"
@@ -60,18 +123,41 @@
         </div>
       </main>
 
-      <footer class="action-bar">
+      <!-- ── Action Bar ─────────────────────────────────────── -->
+      <footer class="action-bar" role="contentinfo">
         <div class="action-meta">
           <strong id="dirtyState">No changes</strong>
           <span id="configPath"></span>
         </div>
-        <div id="messageArea" class="message-area"></div>
+        <div
+          id="messageArea"
+          class="message-area"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        ></div>
         <div class="action-buttons">
-          <button id="validateButton" class="secondary-button" type="button">Validate</button>
-          <button id="applyButton" class="primary-button" type="button" disabled>Apply</button>
+          <button
+            id="validateButton"
+            class="secondary-button"
+            type="button"
+            title="Validate config (Ctrl+S)"
+          >
+            Validate
+          </button>
+          <button
+            id="applyButton"
+            class="primary-button"
+            type="button"
+            disabled
+            title="Apply config (Ctrl+Enter)"
+          >
+            Apply
+          </button>
         </div>
       </footer>
     </div>
+
     <script src="/admin/assets/admin.js"></script>
   </body>
 </html>
