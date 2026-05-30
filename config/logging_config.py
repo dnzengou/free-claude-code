@@ -9,6 +9,7 @@ included at top level for easy grep/filter.
 import json
 import logging
 import re
+import sys
 import threading
 from pathlib import Path
 
@@ -124,21 +125,34 @@ def configure_logging(
     logger.remove()
 
     log_path = Path(log_file)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Truncate log file on fresh start for clean debugging
-    log_path.write_text("")
+    # Try to write to the configured log file (fails on read-only filesystems
+    # such as Vercel Lambda where only /tmp is writable). Fall back to stderr
+    # so the app starts cleanly in serverless environments.
+    _file_sink_ok = False
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("")
+        logger.add(
+            log_file,
+            level="DEBUG",
+            format=_serialize_with_context,
+            encoding="utf-8",
+            mode="a",
+            rotation="50 MB",
+            enqueue=True,
+        )
+        _file_sink_ok = True
+    except PermissionError, OSError:
+        pass  # read-only filesystem — stderr fallback added below
 
-    # Add file sink: JSON lines, DEBUG level, context vars at top level
-    logger.add(
-        log_file,
-        level="DEBUG",
-        format=_serialize_with_context,
-        encoding="utf-8",
-        mode="a",
-        rotation="50 MB",
-        enqueue=True,
-    )
+    if not _file_sink_ok:
+        logger.add(
+            sys.stderr,
+            level="INFO",
+            format=_serialize_with_context,
+            colorize=False,
+        )
 
     # Intercept stdlib logging: route all root logger output to loguru
     intercept = InterceptHandler()
