@@ -1,5 +1,6 @@
 # Free Claude Code — Project Blueprint
-**Version:** 2.0.0 · **Updated:** 2026-05-29 · **Python:** 3.14.0
+**Version:** 2.0.0 · **Updated:** 2026-05-30 · **Python:** 3.14.0
+**Live:** https://free-claude-code-main-ebon.vercel.app · **Repo:** https://github.com/dnzengou/free-claude-code
 
 ---
 
@@ -106,6 +107,24 @@ Local-only (loopback guard), served at `/admin`.
 
 ---
 
+## Deployment
+
+| Target | Method | URL |
+|---|---|---|
+| **Vercel (production)** | `vercel --prod` / push to `main` | https://free-claude-code-main-ebon.vercel.app |
+| **Local** | `uv run uvicorn server:app --host 0.0.0.0 --port 8082` | http://localhost:8082 |
+| **Docker** | `docker build -t fcc . && docker run -p 8082:8082 fcc` | http://localhost:8082 |
+
+**Required env vars on Vercel dashboard:**
+```
+MODEL=<provider>/<model>          # e.g. nvidia_nim/nvidia/nemotron-3-super-120b-a12b
+ANTHROPIC_AUTH_TOKEN=<token>      # proxy auth key (default: freecc)
+NVIDIA_NIM_API_KEY=<key>          # or whichever provider key(s) you use
+```
+Admin UI (`/admin`) is loopback-only — not accessible on Vercel by design.
+
+---
+
 ## CI / Quality Gates
 
 All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
@@ -135,6 +154,7 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] Rate limiting + concurrency control per provider
 - [x] **Production Admin UI overhaul** — Toast, auto-refresh, kbd shortcuts, copy, skeleton
 - [x] **Real-time settings search/filter** — topbar input, key+label match, auto-hides empty sections
+- [x] **Vercel deployment** — `Dockerfile` (python:3.14-slim, non-root, uv), `vercel.json`, stderr log fallback for read-only Lambda FS
 
 ### Planned 🔲
 - [ ] Dark/light theme toggle in Admin UI
@@ -145,6 +165,12 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-05-30 (deploy)
+- **Live on Vercel**: https://free-claude-code-main-ebon.vercel.app — Python 3.14, uv 0.10.11, iad1
+- **Dockerfile**: multi-stage `python:3.14-slim-bookworm`, non-root `fcc` user, `${PORT:-8082}`, compatible with Vercel/Railway/Render
+- **`configure_logging` serverless fix**: `PermissionError/OSError` fallback to stderr when Lambda filesystem is read-only
+- **Removed `[tool.uv] required-version`** from `pyproject.toml` — blocked Vercel's uv 0.10.11; `uv.lock` provides reproducibility
 
 ### v2.0.0 — 2026-05-30
 - **Real-time settings search/filter**: topbar `<input type="search">`, filters all `.field` elements live by env-var key + human label; empty section cards auto-hide; clears on view-switch
