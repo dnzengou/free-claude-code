@@ -157,6 +157,7 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] **Real-time settings search/filter** — topbar input, key+label match, auto-hides empty sections
 - [x] **Vercel deployment** — `Dockerfile` (python:3.14-slim, non-root, uv), `vercel.json`, stderr log fallback for read-only Lambda FS
 - [x] **OpenAI provider** — `providers/openai/`, `openai/gpt-4o` slug, `OPENAI_API_KEY`, wired across all 9 touch-points
+- [x] **`GET /health/ready`** — authenticated readiness check: provider, model, tier overrides, auth status; useful for Vercel env var verification
 
 ### Planned 🔲
 - [ ] Dark/light theme toggle in Admin UI
@@ -167,6 +168,9 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-05-30 (readiness)
+- **`GET /health/ready`** (auth required): returns `{status, provider, model, model_opus, model_sonnet, model_haiku, auth_required}` — verify Vercel env wiring without local admin UI
 
 ### v2.0.0 — 2026-05-30 (providers)
 - **OpenAI provider** (`openai/`): `providers/openai/OpenAIProvider` extends `OpenAIChatTransport`, base `https://api.openai.com/v1`, thinking via `ReasoningReplayMode.REASONING_CONTENT` for o1/o3/o4 models
