@@ -225,6 +225,28 @@ async def probe_health():
     return _probe_response("GET, HEAD, OPTIONS")
 
 
+@router.get("/health/ready")
+async def health_ready(
+    settings: Settings = Depends(get_settings),
+    _auth=Depends(require_api_key),
+):
+    """Readiness check: confirms proxy is configured with a routable model.
+
+    Returns the active provider, fallback model, and per-tier overrides so
+    callers can verify Vercel env vars are wired up without needing the
+    local admin UI.
+    """
+    return {
+        "status": "ready",
+        "provider": settings.provider_type,
+        "model": settings.model,
+        "model_opus": settings.model_opus or None,
+        "model_sonnet": settings.model_sonnet or None,
+        "model_haiku": settings.model_haiku or None,
+        "auth_required": bool(settings.anthropic_auth_token),
+    }
+
+
 @router.get("/v1/models", response_model=ModelsListResponse)
 async def list_models(
     request: Request,
