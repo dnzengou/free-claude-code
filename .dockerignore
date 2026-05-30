@@ -1,0 +1,43 @@
+# Virtual environments and caches
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Dev & editor configs
+.claude
+.cursor
+.vscode
+.serena
+*.code-workspace
+
+# Secrets and local config
+.env
+*.env
+*.key
+
+# Logs and runtime files
+logs/
+*.log
+server.log
+server.pid
+.coverage
+.smoke-results
+llama_cache
+
+# Dev/test only
+tests/
+smoke/
+BLUEPRINT.md
+assets/
+
+# Git
+.git
+.github
+
+# Build artifacts
+dist/
+*.egg-info
