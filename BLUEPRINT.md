@@ -74,6 +74,7 @@ Claude Code CLI / VS Code / JetBrains ACP
 | `opencode_go` | OpenAI compat | `OPENCODE_API_KEY` |
 | `groq` | OpenAI compat | `GROQ_API_KEY` |
 | `cerebras` | OpenAI compat | `CEREBRAS_API_KEY` |
+| `openai` | OpenAI compat | `OPENAI_API_KEY` |
 | `deepseek` | Anthropic native | `DEEPSEEK_API_KEY` |
 | `kimi` | Anthropic native | `KIMI_API_KEY` |
 | `wafer` | Anthropic native | `WAFER_API_KEY` |
@@ -155,6 +156,7 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] **Production Admin UI overhaul** — Toast, auto-refresh, kbd shortcuts, copy, skeleton
 - [x] **Real-time settings search/filter** — topbar input, key+label match, auto-hides empty sections
 - [x] **Vercel deployment** — `Dockerfile` (python:3.14-slim, non-root, uv), `vercel.json`, stderr log fallback for read-only Lambda FS
+- [x] **OpenAI provider** — `providers/openai/`, `openai/gpt-4o` slug, `OPENAI_API_KEY`, wired across all 9 touch-points
 
 ### Planned 🔲
 - [ ] Dark/light theme toggle in Admin UI
@@ -165,6 +167,12 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-05-30 (providers)
+- **OpenAI provider** (`openai/`): `providers/openai/OpenAIProvider` extends `OpenAIChatTransport`, base `https://api.openai.com/v1`, thinking via `ReasoningReplayMode.REASONING_CONTENT` for o1/o3/o4 models
+- `OPENAI_API_KEY` + `OPENAI_PROXY` wired through settings, admin config, `.env.example`, admin UI, catalog, registry, and test mocks (18th provider)
+- Smoke config updated: `openai/gpt-oss-120b:free` → `open_router/openai/gpt-oss-120b:free` to avoid provider ID clash
+- **DeepSeek** already supported — `MODEL=deepseek/deepseek-chat` + `DEEPSEEK_API_KEY` (no code change needed)
 
 ### v2.0.0 — 2026-05-30 (deploy)
 - **Live on Vercel**: https://free-claude-code-main-ebon.vercel.app — Python 3.14, uv 0.10.11, iad1
