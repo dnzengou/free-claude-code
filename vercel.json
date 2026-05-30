@@ -1,4 +1,6 @@
 {
   "version": 2,
+  "framework": "fastapi",
+  "installCommand": "pip install -q 'uv>=0.11.0' && uv sync --frozen --no-dev",
   "regions": ["iad1"]
 }
