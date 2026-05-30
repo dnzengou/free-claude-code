@@ -70,7 +70,7 @@ NVIDIA_NIM_CLI_DEFAULT_MODELS: tuple[str, ...] = (
 
 OPENROUTER_FREE_CLI_DEFAULT_MODELS: tuple[str, ...] = (
     "nvidia/nemotron-3-super-120b-a12b:free",
-    "openai/gpt-oss-120b:free",
+    "open_router/openai/gpt-oss-120b:free",
     "minimax/minimax-m2.5:free",
     "inclusionai/ring-2.6-1t:free",
     "poolside/laguna-m.1:free",

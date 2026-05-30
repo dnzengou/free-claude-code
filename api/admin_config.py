@@ -252,6 +252,18 @@ FIELDS: tuple[ConfigFieldSpec, ...] = (
         ),
     ),
     ConfigFieldSpec(
+        "OPENAI_API_KEY",
+        "OpenAI API Key",
+        "providers",
+        "secret",
+        settings_attr="openai_api_key",
+        secret=True,
+        description=(
+            "OpenAI API key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)). "
+            "Use slugs like `openai/gpt-4o` or `openai/gpt-4o-mini`."
+        ),
+    ),
+    ConfigFieldSpec(
         "LM_STUDIO_BASE_URL",
         "LM Studio Base URL",
         "providers",
@@ -404,6 +416,15 @@ FIELDS: tuple[ConfigFieldSpec, ...] = (
         "providers",
         "secret",
         settings_attr="cerebras_proxy",
+        secret=True,
+        advanced=True,
+    ),
+    ConfigFieldSpec(
+        "OPENAI_PROXY",
+        "OpenAI Proxy",
+        "providers",
+        "secret",
+        settings_attr="openai_proxy",
         secret=True,
         advanced=True,
     ),

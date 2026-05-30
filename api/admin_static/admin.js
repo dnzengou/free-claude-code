@@ -211,6 +211,7 @@ const PROVIDER_NAMES = {
   gemini:            "Google Gemini",
   groq:              "Groq",
   cerebras:          "Cerebras",
+  openai:            "OpenAI",
   fireworks:         "Fireworks AI",
 };
 

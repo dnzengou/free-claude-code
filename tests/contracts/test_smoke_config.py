@@ -35,6 +35,7 @@ def _settings(**overrides):
         "gemini_api_key": "",
         "groq_api_key": "",
         "cerebras_api_key": "",
+        "openai_api_key": "",
         "fireworks_api_key": "",
         "lm_studio_base_url": "",
         "llamacpp_base_url": "",
@@ -285,9 +286,12 @@ def test_smoke_config_returns_nvidia_nim_cli_provider_models(monkeypatch) -> Non
 def test_openrouter_free_cli_default_models_are_normalized() -> None:
     refs = openrouter_free_cli_model_refs({})
 
-    assert tuple(refs) == tuple(
-        f"open_router/{model}" for model in OPENROUTER_FREE_CLI_DEFAULT_MODELS
+    # Models already prefixed with open_router/ are kept as-is; bare names get it prepended.
+    expected = tuple(
+        m if m.startswith("open_router/") else f"open_router/{m}"
+        for m in OPENROUTER_FREE_CLI_DEFAULT_MODELS
     )
+    assert tuple(refs) == expected
     assert "open_router/nvidia/nemotron-3-super-120b-a12b:free" in refs
     assert "open_router/poolside/laguna-m.1:free" in refs
     assert set(refs.values()) == {"openrouter_free_cli_default"}
@@ -297,10 +301,10 @@ def test_openrouter_free_cli_models_override_and_append() -> None:
     refs = openrouter_free_cli_model_refs(
         {
             "FCC_SMOKE_OPENROUTER_FREE_MODELS": (
-                "openai/gpt-oss-120b:free,open_router/custom/model:free"
+                "open_router/openai/gpt-oss-120b:free,open_router/custom/model:free"
             ),
             "FCC_SMOKE_OPENROUTER_FREE_EXTRA_MODELS": (
-                "poolside/laguna-m.1:free,openai/gpt-oss-120b:free"
+                "poolside/laguna-m.1:free,open_router/openai/gpt-oss-120b:free"
             ),
         }
     )
