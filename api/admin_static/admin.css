@@ -909,7 +909,38 @@ kbd {
   }
 }
 
-/* ── Search Input ────────────────────────────────────────────── */
+/* ── Light Theme ─────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg:           #f7f5f2;
+  --panel:        #ffffff;
+  --panel-strong: #f0ede9;
+  --card:         #faf8f6;
+  --input:        #ffffff;
+  --text:         #1a1714;
+  --muted:        #6b6259;
+  --line:         #ddd9d3;
+  --line-strong:  #c8c2ba;
+  --accent:       #1e8a5e;
+  --accent-dark:  #166b49;
+  --accent-glow:  rgba(30, 138, 94, 0.14);
+  --warn:         #a05f00;
+  --error:        #c0392b;
+  --ok:           #1e8a5e;
+  --info:         #1a6ebd;
+  --shadow-sm:    0 2px 8px rgba(0, 0, 0, 0.07);
+  --shadow:       0 14px 34px rgba(0, 0, 0, 0.11);
+}
+
+[data-theme="light"] .sidebar {
+  background: #f0ede9;
+}
+
+[data-theme="light"] .action-bar {
+  background: rgba(240, 237, 233, 0.94);
+}
+
+/* ── Search Input ─────────────────────────────────────────────── */
 .search-input {
   height: 32px;
   min-width: 180px;
