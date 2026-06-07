@@ -1,5 +1,5 @@
 # Free Claude Code — Project Blueprint
-**Version:** 2.0.0 · **Updated:** 2026-05-30 · **Python:** 3.14.0
+**Version:** 2.0.0 · **Updated:** 2026-06-07 · **Python:** 3.14.0
 **Live:** https://free-claude-code-main-ebon.vercel.app · **Repo:** https://github.com/dnzengou/free-claude-code
 
 ---
@@ -105,6 +105,7 @@ Local-only (loopback guard), served at `/admin`.
 - `beforeunload` unsaved-changes browser guard
 - 6 CSS keyframe animations; accent glow on focused inputs
 - Full mobile-responsive layout
+- Dark/light theme toggle — `localStorage` persistence, sun/moon icons, full CSS variable override
 
 ---
 
@@ -158,9 +159,9 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] **Vercel deployment** — `Dockerfile` (python:3.14-slim, non-root, uv), `vercel.json`, stderr log fallback for read-only Lambda FS
 - [x] **OpenAI provider** — `providers/openai/`, `openai/gpt-4o` slug, `OPENAI_API_KEY`, wired across all 9 touch-points
 - [x] **`GET /health/ready`** — authenticated readiness check: provider, model, tier overrides, auth status; useful for Vercel env var verification
+- [x] **Dark/light theme toggle** — `localStorage` persistence, sun/moon SVG icons, `data-theme` on `<html>`, full light-mode design token overrides in CSS
 
 ### Planned 🔲
-- [ ] Dark/light theme toggle in Admin UI
 - [ ] Per-request latency and token-usage metrics panel
 - [ ] Provider health history (sparkline chart)
 - [ ] One-click provider API key validation (not just model fetch)
@@ -168,6 +169,11 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-06-07 (theme + build)
+- **Dark/light theme toggle**: sun/moon SVG button in topbar; `localStorage` key `fcc-theme`; `data-theme="light"` on `<html>`; full CSS variable override block for light mode; persists across page loads
+- **Hatchling wheel fix**: removed duplicate `api/admin_static` from `force-include` — newer hatchling strict-mode rejected the double-inclusion; `uv build` now clean; unblocked Vercel re-deployment
+- **CI**: 1429/1429 passing; deployed to https://free-claude-code-main-ebon.vercel.app
 
 ### v2.0.0 — 2026-05-30 (readiness)
 - **`GET /health/ready`** (auth required): returns `{status, provider, model, model_opus, model_sonnet, model_haiku, auth_required}` — verify Vercel env wiring without local admin UI
