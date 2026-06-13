@@ -1,5 +1,5 @@
 # Free Claude Code — Project Blueprint
-**Version:** 2.0.0 · **Updated:** 2026-06-07 · **Python:** 3.14.0
+**Version:** 2.0.0 · **Updated:** 2026-06-13 · **Python:** 3.14.0
 **Live:** https://free-claude-code-main-ebon.vercel.app · **Repo:** https://github.com/dnzengou/free-claude-code
 
 ---
@@ -93,7 +93,7 @@ Local-only (loopback guard), served at `/admin`.
 | File | Purpose |
 |---|---|
 | `api/admin_static/index.html` | Shell: sidebar, views, toast region, action bar |
-| `api/admin_static/admin.css` | Design system, animations, toast, skeleton, responsive |
+| `api/admin_static/fcc.css` | Design system, animations, toast, skeleton, responsive, metrics |
 | `api/admin_static/admin.js` | Toast, auto-refresh, keyboard shortcuts, copy, dirty guard |
 
 **Features shipped:**
@@ -106,6 +106,7 @@ Local-only (loopback guard), served at `/admin`.
 - 6 CSS keyframe animations; accent glow on focused inputs
 - Full mobile-responsive layout
 - Dark/light theme toggle — `localStorage` persistence, sun/moon icons, full CSS variable override
+- Metrics tab — summary cards, latency sparkline, per-request table with inline bars; `GET /admin/api/metrics`
 
 ---
 
@@ -160,15 +161,22 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] **OpenAI provider** — `providers/openai/`, `openai/gpt-4o` slug, `OPENAI_API_KEY`, wired across all 9 touch-points
 - [x] **`GET /health/ready`** — authenticated readiness check: provider, model, tier overrides, auth status; useful for Vercel env var verification
 - [x] **Dark/light theme toggle** — `localStorage` persistence, sun/moon SVG icons, `data-theme` on `<html>`, full light-mode design token overrides in CSS
+- [x] **Per-request metrics panel** — `api/metrics.py` in-memory store, `GET /admin/api/metrics`, Admin UI "Metrics" tab: summary cards (total/avg/p95/tokens), latency sparkline, request table with inline bars
 
 ### Planned 🔲
-- [ ] Per-request latency and token-usage metrics panel
-- [ ] Provider health history (sparkline chart)
+- [ ] Provider health history (sparkline chart, persisted across refreshes)
 - [ ] One-click provider API key validation (not just model fetch)
 
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-06-13 (metrics)
+- **Per-request metrics panel**: `api/metrics.py` bounded deque (500 entries), thread-safe `record()`/`snapshot()`. `_metered_stream()` in `services.py` wraps provider SSE, parses `message_delta` for `output_tokens`, records latency on completion/error.
+- **`GET /admin/api/metrics`**: loopback-only, returns `{requests[], summary{total, avg_latency_ms, p95_latency_ms, total_input_tokens, total_output_tokens}}`
+- **Admin UI Metrics tab**: summary cards, latency sparkline (newest-right, color-coded by threshold), request table with inline latency bars. Loads on nav switch.
+- **Vercel path conflict fix**: renamed `admin.css` → `fcc.css`; Vercel strips extensions before conflict checking so `admin.js` + `admin.css` → both `admin` = blocked.
+- **CI**: 1431/1431 passing
 
 ### v2.0.0 — 2026-06-07 (theme + build)
 - **Dark/light theme toggle**: sun/moon SVG button in topbar; `localStorage` key `fcc-theme`; `data-theme="light"` on `<html>`; full CSS variable override block for light mode; persists across page loads
