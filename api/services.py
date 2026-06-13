@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 import traceback
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -18,6 +20,7 @@ from core.trace import api_messages_request_snapshot, trace_event, traced_async_
 from providers.base import BaseProvider
 from providers.exceptions import InvalidRequestError, ProviderError
 
+from . import metrics
 from .model_router import ModelRouter
 from .models.anthropic import MessagesRequest, TokenCountRequest
 from .models.responses import TokenCountResponse
@@ -46,6 +49,47 @@ def anthropic_sse_streaming_response(
         media_type="text/event-stream",
         headers=ANTHROPIC_SSE_RESPONSE_HEADERS,
     )
+
+
+async def _metered_stream(
+    agen: AsyncIterator[str],
+    *,
+    request_id: str,
+    provider_id: str,
+    model: str,
+    input_tokens: int,
+) -> AsyncIterator[str]:
+    """Wrap a provider SSE stream to record latency + token usage metrics."""
+    start = time.perf_counter()
+    output_tokens = 0
+    status = "ok"
+    try:
+        async for chunk in agen:
+            if '"message_delta"' in chunk and '"output_tokens"' in chunk:
+                for line in chunk.splitlines():
+                    if line.startswith("data: "):
+                        try:
+                            obj = json.loads(line[6:])
+                            if obj.get("type") == "message_delta":
+                                tok = obj.get("usage", {}).get("output_tokens")
+                                if isinstance(tok, int):
+                                    output_tokens = tok
+                        except Exception:
+                            pass
+            yield chunk
+    except BaseException:
+        status = "error"
+        raise
+    finally:
+        metrics.record(
+            request_id=request_id,
+            provider_id=provider_id,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=(time.perf_counter() - start) * 1000,
+            status=status,
+        )
 
 
 def _http_status_for_unexpected_service_exception(_exc: BaseException) -> int:
@@ -205,7 +249,14 @@ class ClaudeProxyService:
                         "gateway_model": routed.request.model,
                     },
                 )
-                return anthropic_sse_streaming_response(streamed)
+                metered = _metered_stream(
+                    streamed,
+                    request_id=request_id,
+                    provider_id=routed.resolved.provider_id,
+                    model=routed.request.model,
+                    input_tokens=input_tokens,
+                )
+                return anthropic_sse_streaming_response(metered)
 
         except ProviderError:
             raise

@@ -32,6 +32,11 @@ const VIEW_GROUPS = [
     sections: ["messaging", "voice"],
     containerId: "messagingSections",
   },
+  {
+    id: "metrics",
+    label: "Metrics",
+    title: "Request Metrics",
+  },
 ];
 
 // ── App State ─────────────────────────────────────────────────
@@ -188,6 +193,7 @@ function setActiveView(viewId, { scroll = false } = {}) {
     view.hidden = !selected;
   });
 
+  if (activeView.id === "metrics") loadMetrics();
   if (scroll) window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -285,6 +291,7 @@ function updateProviderCard(providerId, status, label, metaText) {
 // ================================================================
 function renderSections(sections, fields) {
   VIEW_GROUPS.forEach((view) => {
+    if (!view.containerId) return;
     byId(view.containerId).innerHTML = "";
   });
 
@@ -297,6 +304,7 @@ function renderSections(sections, fields) {
   });
 
   VIEW_GROUPS.forEach((view) => {
+    if (!view.sections || !view.containerId) return;
     const container = byId(view.containerId);
     view.sections.forEach((sectionId) => {
       const section       = sectionById.get(sectionId);
@@ -839,6 +847,115 @@ function initSearch() {
       filterFields("");
     });
   });
+}
+
+// ================================================================
+//  METRICS
+// ================================================================
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function loadMetrics() {
+  const container = byId("metricsContent");
+  if (!container) return;
+  container.innerHTML = '<p class="metrics-empty">Loading…</p>';
+  try {
+    const data = await api("/admin/api/metrics");
+    renderMetrics(container, data);
+  } catch (err) {
+    container.innerHTML = `<p class="metrics-empty">${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function fmtLatency(ms) {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
+}
+
+function renderMetrics(container, data) {
+  const { requests, summary } = data;
+
+  const summaryHtml = `
+    <div class="metrics-summary">
+      <div class="metric-card">
+        <div class="metric-value">${summary.total}</div>
+        <div class="metric-label">Requests</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value">${fmtLatency(summary.avg_latency_ms)}</div>
+        <div class="metric-label">Avg latency</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value">${fmtLatency(summary.p95_latency_ms)}</div>
+        <div class="metric-label">P95 latency</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value">${(summary.total_input_tokens + summary.total_output_tokens).toLocaleString()}</div>
+        <div class="metric-label">Total tokens</div>
+      </div>
+    </div>`;
+
+  if (requests.length === 0) {
+    container.innerHTML = summaryHtml +
+      '<p class="metrics-empty">No requests yet — run a query through the proxy to see latency and token data here.</p>';
+    return;
+  }
+
+  const maxLat = Math.max(...requests.slice(0, 60).map((r) => r.latency_ms), 1);
+
+  const sparkBars = requests.slice(0, 60).reverse().map((r) => {
+    const pct = Math.max(4, Math.round((r.latency_ms / maxLat) * 100));
+    const cls = r.status !== "ok"
+      ? "spark-bar error-bar"
+      : r.latency_ms > 5000
+      ? "spark-bar very-slow"
+      : r.latency_ms > 2000
+      ? "spark-bar slow"
+      : "spark-bar";
+    return `<div class="${cls}" style="height:${pct}%" title="${escapeHtml(r.provider_id)} ${fmtLatency(r.latency_ms)}"></div>`;
+  }).join("");
+
+  const sparkHtml = `<div class="sparkline" title="Latency sparkline — newest right">${sparkBars}</div>`;
+
+  const rows = requests.map((r) => {
+    const dt = new Date(r.ts * 1000);
+    const timeStr = dt.toLocaleTimeString();
+    const barPct  = Math.max(4, Math.round((r.latency_ms / maxLat) * 80));
+    const barCls  = r.status !== "ok"
+      ? "latency-bar error-bar"
+      : r.latency_ms > 5000
+      ? "latency-bar very-slow"
+      : r.latency_ms > 2000
+      ? "latency-bar slow"
+      : "latency-bar";
+    const stCls = r.status === "ok" ? "ok" : "error";
+    return `<tr>
+      <td>${escapeHtml(timeStr)}</td>
+      <td>${escapeHtml(r.provider_id)}</td>
+      <td class="model-cell" title="${escapeHtml(r.model)}">${escapeHtml(r.model)}</td>
+      <td>${r.input_tokens.toLocaleString()}</td>
+      <td>${r.output_tokens.toLocaleString()}</td>
+      <td><div class="latency-bar-wrap"><div class="${barCls}" style="width:${barPct}px"></div><span>${fmtLatency(r.latency_ms)}</span></div></td>
+      <td><span class="status-pill ${stCls}">${escapeHtml(r.status)}</span></td>
+    </tr>`;
+  }).join("");
+
+  container.innerHTML = summaryHtml + sparkHtml + `
+    <div class="metrics-table-wrap">
+      <table class="metrics-table" aria-label="Recent requests">
+        <thead>
+          <tr>
+            <th>Time</th><th>Provider</th><th>Model</th>
+            <th>In</th><th>Out</th><th>Latency</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 // ================================================================

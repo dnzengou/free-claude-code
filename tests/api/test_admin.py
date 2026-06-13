@@ -510,3 +510,28 @@ def test_admin_launch_url_uses_loopback_for_wildcard_host():
     settings = Settings.model_construct(host="0.0.0.0", port=8082)
 
     assert local_admin_url(settings) == "http://127.0.0.1:8082/admin"
+
+
+def test_admin_metrics_endpoint_returns_empty_store(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_app(lifespan_enabled=False)
+
+    response = _local_client(app).get("/admin/api/metrics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "requests" in body
+    assert "summary" in body
+    assert isinstance(body["requests"], list)
+    assert body["summary"]["total"] == 0
+    assert body["summary"]["avg_latency_ms"] == 0.0
+    assert body["summary"]["total_input_tokens"] == 0
+    assert body["summary"]["total_output_tokens"] == 0
+
+
+def test_admin_metrics_endpoint_is_loopback_only(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_app(lifespan_enabled=False)
+
+    remote_client = TestClient(app, client=("203.0.113.10", 50000))
+    assert remote_client.get("/admin/api/metrics").status_code == 403

@@ -17,6 +17,7 @@ from config.settings import Settings
 from config.settings import get_settings as get_cached_settings
 from providers.registry import ProviderRegistry
 
+from . import metrics as _metrics
 from .admin_config import (
     FIELD_BY_KEY,
     load_config_response,
@@ -154,6 +155,26 @@ async def admin_status(request: Request):
         "pending_fields": getattr(request.app.state, "admin_pending_fields", []),
         "provider_status": provider_config_status(),
         "cached_models": cached_models,
+    }
+
+
+@router.get("/admin/api/metrics")
+async def get_metrics(request: Request):
+    require_loopback_admin(request)
+    entries = _metrics.snapshot(100)
+    latencies = [e["latency_ms"] for e in entries if e["status"] == "ok"]
+    avg_ms = round(sum(latencies) / len(latencies), 1) if latencies else 0.0
+    sorted_lat = sorted(latencies)
+    p95_ms = sorted_lat[int(len(sorted_lat) * 0.95)] if sorted_lat else 0.0
+    return {
+        "requests": list(reversed(entries)),
+        "summary": {
+            "total": len(entries),
+            "avg_latency_ms": avg_ms,
+            "p95_latency_ms": round(p95_ms, 1),
+            "total_input_tokens": sum(e["input_tokens"] for e in entries),
+            "total_output_tokens": sum(e["output_tokens"] for e in entries),
+        },
     }
 
 
