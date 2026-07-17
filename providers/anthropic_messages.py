@@ -492,6 +492,10 @@ class AnthropicMessagesTransport(BaseProvider):
                     exc_type=type(error).__name__,
                     mid_stream=sent_any_event,
                 )
+                if not sent_any_event and self._config.escalate_pre_stream_errors:
+                    raise map_error(
+                        error, rate_limiter=self._global_rate_limiter
+                    ) from error
                 if sent_any_event:
                     for event in emitted_tracker.iter_close_unclosed_blocks():
                         yield event

@@ -1,5 +1,5 @@
 # Free Claude Code — Project Blueprint
-**Version:** 2.0.0 · **Updated:** 2026-06-15 · **Python:** 3.14.0
+**Version:** 2.0.0 · **Updated:** 2026-07-18 · **Python:** 3.14.0
 **Live:** https://free-claude-code-main-ebon.vercel.app · **Repo:** https://github.com/dnzengou/free-claude-code
 
 ---
@@ -57,7 +57,7 @@ Claude Code CLI / VS Code / JetBrains ACP
 | `config/` | Settings (`pydantic-settings`), provider catalog, logging config, paths |
 | `messaging/` | Discord/Telegram platforms, session trees, voice transcription |
 | `cli/` | `fcc-server`, `fcc-claude`, `fcc-init` entry points; process registry |
-| `tests/` | 1443 unit, contract, and integration tests |
+| `tests/` | 1462 unit, contract, and integration tests |
 
 ---
 
@@ -139,7 +139,7 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 | ruff-format | `uv run ruff format --check` | ✅ |
 | ruff-check | `uv run ruff check` | ✅ |
 | ty | `uv run ty check` | ✅ |
-| pytest | `uv run pytest -v --tb=short` | ✅ 1443/1443 |
+| pytest | `uv run pytest -v --tb=short` | ✅ 1462/1462 |
 
 ---
 
@@ -165,6 +165,7 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 - [x] **Per-request metrics panel** — `api/metrics.py` in-memory store, `GET /admin/api/metrics`, Admin UI "Metrics" tab: summary cards (total/avg/p95/tokens), latency sparkline, request table with inline bars
 - [x] **Provider health history** — `api/health_history.py` per-provider bounded deque (50 entries), `GET /admin/api/health-history`, JSON persistence to `~/.fcc-cache/health_history.json` (serverless-safe fallback), inline sparkline on each provider card
 - [x] **One-click API key validation** — `POST /admin/api/providers/{id}/validate`; `validate_credentials()` on BaseProvider; OpenAI-compat override adds 1-token completion check; "Validate key" button per non-local provider card
+- [x] **Failover + evo-router** — `FAILOVER_MODELS` chain retries pre-stream provider errors transparently; `api/evo_router.py` records per-ref fitness (recency-weighted success + latency penalty) with a circuit-breaker cooldown; `EVO_ROUTING=1` orders candidates by observed fitness
 
 ### Planned 🔲
 - [ ] *(roadmap clear — open an issue to propose the next feature)*
@@ -172,6 +173,13 @@ All enforced in `.github/workflows/tests.yml` on push/PR to `main`/`master`:
 ---
 
 ## Changelog
+
+### v2.0.0 — 2026-07-18 (failover + evo-router)
+- **Transparent failover**: `FAILOVER_MODELS=openai/gpt-4o,open_router/anthropic/claude-3-5-sonnet` opts in a retry chain. `ClaudeProxyService.create_message` peeks the first chunk of each candidate; a `ProviderError` raised BEFORE any byte reaches the client causes the loop to advance to the next candidate. Mid-stream errors always stay in-band. When every candidate fails, an Anthropic-shaped `message_start / text-block / message_stop` SSE lifecycle is emitted so clients see a clean error instead of a truncated connection.
+- **Provider escalation flag**: `ProviderConfig.escalate_pre_stream_errors` (auto-enabled when `FAILOVER_MODELS` is set) makes `AnthropicMessagesTransport` and `OpenAIChatTransport` raise the mapped `ProviderError` on pre-stream failure. `OpenAIChatTransport.stream_response` also delays the `message_start` yield until after `_create_stream()` succeeds, so a failed candidate emits zero bytes.
+- **Evo router (`api/evo_router.py`)**: per-`provider/model` recency-weighted success rate (decay 0.9) with a latency penalty and a 3-consecutive-failure / 60 s circuit-breaker cooldown. `record_outcome()` is called from `_metered_stream` (winners) and the failover loop (skipped candidates). Persisted to `${FCC_CACHE_DIR:-~/.fcc-cache}/evo_fitness.json`; serverless-safe (disables on read-only FS).
+- **`EVO_ROUTING=1`**: when set alongside `FAILOVER_MODELS`, `rank()` orders candidates by fitness instead of configured order. Cooldown refs are moved to the back rather than dropped, so a fully-broken chain still attempts every entry.
+- **CI**: 1462/1462 passing (19 new tests: 13 for evo_router unit behaviour, 6 for failover integration + settings validation). All 4 gates green.
 
 ### v2.0.0 — 2026-06-15 (audit + ty)
 - **`ty` regression fix**: removed redundant `health_history = importlib.reload(health_history)` reassignments in `tests/api/test_admin.py` (3 sites). `importlib.reload()` mutates the module in place, so the rebinding only confused ty's narrowed-import type with the generic `ModuleType` return — no `# type: ignore` added (CLAUDE.md hard rule).

@@ -418,8 +418,6 @@ class OpenAIChatTransport(BaseProvider):
             body=provider_chat_body_snapshot(body),
         )
 
-        yield sse.message_start()
-
         think_parser = ThinkTagParser()
         heuristic_parser = HeuristicToolParser()
         finish_reason = None
@@ -430,6 +428,37 @@ class OpenAIChatTransport(BaseProvider):
         async with self._global_rate_limiter.concurrency_slot():
             try:
                 stream, body = await self._create_stream(body)
+            except asyncio.CancelledError, GeneratorExit:
+                raise
+            except Exception as e:
+                self._log_stream_transport_error(tag, req_tag, e, request_id=request_id)
+                mapped_e = map_error(e, rate_limiter=self._global_rate_limiter)
+                base_message = user_visible_message_for_mapped_provider_error(
+                    mapped_e,
+                    provider_name=tag,
+                    read_timeout_s=self._config.http_read_timeout,
+                )
+                error_message = append_request_id(base_message, request_id)
+                trace_event(
+                    stage="provider",
+                    event="provider.response.error",
+                    source="provider",
+                    provider=tag,
+                    error_message=error_message,
+                    mapped_error_type=type(mapped_e).__name__,
+                )
+                if self._config.escalate_pre_stream_errors:
+                    # No bytes yielded yet — raise so the service layer can
+                    # fail over to the next candidate.
+                    raise mapped_e from e
+                yield sse.message_start()
+                for event in sse.emit_error(error_message):
+                    yield event
+                yield sse.message_delta("end_turn", 1)
+                yield sse.message_stop()
+                return
+            yield sse.message_start()
+            try:
                 tool_argument_aliases = self._tool_argument_aliases(body)
                 async for chunk in stream:
                     if getattr(chunk, "usage", None):
