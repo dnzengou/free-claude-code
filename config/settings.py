@@ -191,6 +191,14 @@ class Settings(BaseSettings):
     model_sonnet: str | None = Field(default=None, validation_alias="MODEL_SONNET")
     model_haiku: str | None = Field(default=None, validation_alias="MODEL_HAIKU")
 
+    # ==================== Failover / Evo Routing ====================
+    # Comma-separated provider/model refs tried in order when the active
+    # provider fails before any bytes reach the client.
+    failover_models: str = Field(default="", validation_alias="FAILOVER_MODELS")
+    # Rank the failover chain by observed fitness (success rate + latency)
+    # instead of configured order. Requires FAILOVER_MODELS.
+    evo_routing: bool = Field(default=False, validation_alias="EVO_ROUTING")
+
     # ==================== Per-Provider Proxy ====================
     nvidia_nim_proxy: str = Field(default="", validation_alias="NVIDIA_NIM_PROXY")
     open_router_proxy: str = Field(default="", validation_alias="OPENROUTER_PROXY")
@@ -456,6 +464,24 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid provider: '{provider}'. Supported: {supported}")
         return v
 
+    @field_validator("failover_models")
+    @classmethod
+    def validate_failover_models(cls, v: str) -> str:
+        refs = [part.strip() for part in v.split(",") if part.strip()]
+        for ref in refs:
+            provider, separator, model_name = ref.partition("/")
+            if (
+                not separator
+                or not model_name
+                or provider not in (SUPPORTED_PROVIDER_IDS)
+            ):
+                supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDER_IDS)
+                raise ValueError(
+                    f"Invalid FAILOVER_MODELS entry: '{ref}'. "
+                    f"Format: provider_id/model_name. Supported: {supported}"
+                )
+        return ",".join(refs)
+
     @model_validator(mode="after")
     def check_nvidia_nim_api_key(self) -> Settings:
         if (
@@ -507,6 +533,20 @@ class Settings(BaseSettings):
         if "sonnet" in name_lower and self.model_sonnet is not None:
             return self.model_sonnet
         return self.model
+
+    def failover_model_refs(self) -> tuple[str, ...]:
+        """Parsed FAILOVER_MODELS refs (order preserved, deduped)."""
+        refs: list[str] = []
+        for part in self.failover_models.split(","):
+            ref = part.strip()
+            if ref and ref not in refs:
+                refs.append(ref)
+        return tuple(refs)
+
+    @property
+    def failover_enabled(self) -> bool:
+        """Whether pre-stream provider failures should escalate for failover."""
+        return bool(self.failover_model_refs())
 
     def configured_chat_model_refs(self) -> tuple[ConfiguredChatModelRef, ...]:
         """Return unique configured chat provider/model refs with source env keys."""

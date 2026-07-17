@@ -29,6 +29,10 @@ class ProviderConfig(BaseModel):
     proxy: str = ""
     log_raw_sse_events: bool = False
     log_api_error_tracebacks: bool = False
+    # When true, stream failures BEFORE any upstream content raise a mapped
+    # ProviderError (so the service layer can fail over) instead of emitting
+    # in-band Anthropic error SSE. Mid-stream failures always stay in-band.
+    escalate_pre_stream_errors: bool = False
 
 
 class BaseProvider(ABC):

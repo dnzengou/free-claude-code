@@ -221,6 +221,7 @@ def build_provider_config(
         proxy=proxy,
         log_raw_sse_events=settings.log_raw_sse_events,
         log_api_error_tracebacks=settings.log_api_error_tracebacks,
+        escalate_pre_stream_errors=settings.failover_enabled,
     )
 
 
